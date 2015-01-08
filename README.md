@@ -68,4 +68,4 @@ Submodules:
 
 ## License
 
-Released under the [MIT license](https://github.com/mcasimir/swig-traverse/LICENSE).
+Released under the [MIT license](https://github.com/mcasimir/swig-traverse/blob/master/LICENSE).
