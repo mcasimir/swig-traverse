@@ -1,74 +1,3 @@
-/**
-@license MIT
-
-Copyright (c) 2014 Maurizio Casimirri (https://github.com/mcasimir)
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-THE SOFTWARE.
-
-@module swigTraverse
-@description
-
-Swig plugin to traverse tree structures.
-
-swigTraverse assumes tree nodes to be objects with a children property that 
-is either `undefined` or an array of child nodes. 
-
-@usage
-
-``` js
-var swig = require('swig'),
-    swigTraverse = require('swig-traverse');
-swigTraverse( swig );
-// ...
-```
-
-``` html
-{% traverse child in node -%}
-  <!-- ... -->
-{% postvisit -%} <!-- optional -->
-  <!-- ... -->
-{% endtraverse -%}
-```
-
-@example
-
-``` html
-<h2>Description</h2>
-{{ node.description | marked }}
-
-<h2>Submodules</h2>
-<ul>
-  {% traverse child in node -%}
-    {% if child.type == 'module' %}
-      <li><a href="/{{child.path}}.html">{{child.fullname}}</a>
-        <ul>
-    {% endif -%}
-  {% postvisit -%}
-    {% if child.type == 'module' %}
-        </ul>
-      </li>
-    {% endif -%}
-  {% endtraverse -%}
-</ul>
-```
-*/
-
 var compileTraverse = function (compiler, args, content, parents, options, blockName) {
   var yield = function() {
     return compiler(content, parents, options, blockName);
@@ -156,14 +85,14 @@ var parsePostvisit = function (str, line, parser, types, stack) {
 };
 
 var traverse = function(node, down, up) {
-  if (down) {
+  if (down && !Array.isArray(node)) {
     down(node);
   }
-  var children = node.children || [];
+  var children = Array.isArray(node) ? node : (node.children || []);
   children.forEach(function(child) {
     traverse(child, down, up);
   });
-  if (up) {
+  if (up && !Array.isArray(node)) {
     up(node);
   }
 };

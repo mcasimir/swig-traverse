@@ -35,10 +35,31 @@ swigTraverse( swig );
 ```
 
 ``` html
-{% traverse child in node -%}
-  <!-- previsited nodes bound to child -->
-{% postvisit -%} <!-- optional -->
-  <!-- postvisited nodes bound to child -->
+{% traverse node in tree -%}
+  <!-- previsited nodes bound to node var -->
+
+{% postvisit -%}
+  <!-- postvisited nodes bound to node var -->
+
+{% endtraverse -%}
+```
+
+Note. `{% postvisit %}` section is optional:
+
+``` html
+{% traverse node in tree -%}
+  <!-- previsited nodes bound to node var -->
+
+{% endtraverse -%}
+```
+
+You can pass array as tree, in that case it will considered to be a _"children"_ array. Useful
+to exclude root from traversing:
+
+```
+{% traverse child in node.children -%}
+  <!-- do something with child node -->
+
 {% endtraverse -%}
 ```
 
@@ -52,7 +73,7 @@ Description:
 Submodules:
 
 <ul>
-  {% traverse child in node -%}
+  {% traverse child in node.children -%}
     {% if child.type == 'module' %}
       <li><a href="/{{child.path}}.html">{{child.title}}</a>
         <ul>
