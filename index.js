@@ -85,14 +85,14 @@ var parsePostvisit = function (str, line, parser, types, stack) {
 };
 
 var traverse = function(node, down, up) {
-  if (down && !Array.isArray(node)) {
+  if (down && typeof node.forEach !== 'function') {
     down(node);
   }
-  var children = Array.isArray(node) ? node : (node.children || []);
+  var children = typeof node.forEach === 'function' ? node : (node.children || []);
   children.forEach(function(child) {
     traverse(child, down, up);
   });
-  if (up && !Array.isArray(node)) {
+  if (up && typeof node.forEach !== 'function') {
     up(node);
   }
 };
