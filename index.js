@@ -1,15 +1,99 @@
+var inherits = require('util').inherits;
+
+/*==============================
+=            Errors            =
+==============================*/
+
+function errorMessage(file, line, message) {
+  return ['[swig-traverse]', message, 'in file:', file, 'on line:', line].join(' ');
+}
+
+function quote(str) {
+  return '`' + str + '`';
+}
+
+function UnexpectedTokenError(token, file, line) {
+  Error.call(this);
+  Error.captureStackTrace(this, UnexpectedTokenError);
+  this.name = 'UnexpectedTokenError';
+  this.message = errorMessage(file, line, ['Unexpected token', quote(token.match)].join(' '));
+}
+
+inherits(UnexpectedTokenError, Error);
+
+function ComparatorMissingError(file, line) {
+  Error.call(this);
+  Error.captureStackTrace(this, ComparatorMissingError);
+  this.name = 'ComparatorMissingError';
+  this.message = errorMessage(file, line, ['Ivalid traverse tag without `in` keyword'].join(' '));
+}
+
+inherits(ComparatorMissingError, Error);
+
+/*================================
+=            Previsit            =
+================================*/
+
+var parseTraverse = function (str, line, parser, types, stack, opts) {
+  var firstVarParsed, comparatorParsed;
+
+  parser.on('*', function(token) {
+    if (firstVarParsed) { 
+      // Appends anything second param
+      if (this.out.length === 1) {
+        this.out.push(token.match);
+      } else {
+        this.out[this.out.length - 1] += token.match;
+      }
+      return false;
+    }
+
+    if ([types.WHITESPACE, types.VAR].indexOf(token.type) === -1) {
+      throw new UnexpectedTokenError(token, opts.filename, line);
+    }
+
+    // Ignores whitespaces
+    return false;
+  });
+
+  parser.on(types.VAR, function (token) {
+    if (!firstVarParsed) {
+      firstVarParsed = true;
+      this.out.push(token.match);  
+    } else {
+      this.out[this.out.length - 1] += '_ctx.' + token.match;
+    }
+    return false;
+  });
+
+  parser.on(types.COMPARATOR, function (token) {
+    if (token.match !== 'in') {
+      throw new UnexpectedTokenError(token, opts.filename, line);
+    }
+    comparatorParsed = true;
+    this.filterApplyIdx.push(this.out.length);
+  });
+
+  parser.on('end', function () {
+    if (!comparatorParsed) {
+      throw new ComparatorMissingError(this.filename, line);
+    }
+    return true;
+  });
+  return true;
+};
+
 var compileTraverse = function (compiler, args, content, parents, options, blockName) {
-  var yield = function() {
+  var yieldToContents = function() {
     return compiler(content, parents, options, blockName);
   };
 
   var uid = (new Date()).getTime();
-
-  return [
+  var compiled = [
     '(function() {',
     '  _ext.swigTraverse.push({iter: \'' + args[0] + '\', tree: ' + args[1] + '});',
     '  __bkpUID = { iter: _ctx[_ext.swigTraverse.current().iter], level: _ctx.level }',
-
+    '  _ctx.level = 0;',
     '  _ext.swigTraverse.traverse(_ext.swigTraverse.current().tree, function(__nodeUID) {',
     '    _ctx[_ext.swigTraverse.current().iter] = __nodeUID;',
     '    _ctx.level++;',
@@ -23,8 +107,20 @@ var compileTraverse = function (compiler, args, content, parents, options, block
     '})();']
       .join('\n')
       .replace(/UID/g, uid)
-      .replace('YIELD', yield());
+      .replace('YIELD', yieldToContents());
 
+  return compiled;
+};
+
+/*=================================
+=            Postvisit            =
+=================================*/
+
+var parsePostvisit = function (str, line, parser, types, stack, opts) {
+  parser.on('*', function (token) {
+    throw new UnexpectedTokenError(token, opts.filename, line);
+  });
+  return (stack.length && stack[stack.length - 1].name === 'traverse');
 };
 
 var compilePostvisit = function () {
@@ -37,76 +133,30 @@ var compilePostvisit = function () {
     .replace(/UID/g, uid);
 };
 
-var parseTraverse = function (str, line, parser, types) {
-  var firstVar, ready;
-
-  parser.on(types.NUMBER, function (token) {
-    var lastState = this.state.length ? this.state[this.state.length - 1] : null;
-    if (!ready ||
-        (lastState !== types.ARRAYOPEN &&
-          lastState !== types.CURLYOPEN &&
-          lastState !== types.CURLYCLOSE &&
-          lastState !== types.FUNCTION &&
-          lastState !== types.FILTER)
-        ) {
-      throw new Error('Unexpected number "' + token.match + '" on line ' + line + '.');
-    }
-    return true;
-  });
-
-  parser.on(types.VAR, function (token) {
-    if (ready && firstVar) {
-      return true;
-    }
-
-    if (!this.out.length) {
-      firstVar = true;
-    }
-
-    this.out.push(token.match);
-  });
-
-  parser.on(types.COMPARATOR, function (token) {
-    if (token.match !== 'in' || !firstVar) {
-      throw new Error('Unexpected token "' + token.match + '" on line ' + line + '.');
-    }
-    ready = true;
-    this.filterApplyIdx.push(this.out.length);
-  });
-
-  return true;
-};
-
-var parsePostvisit = function (str, line, parser, types, stack) {
-  parser.on('*', function (token) {
-    throw new Error('"postvisit" tag does not accept any tokens. Found "' + token.match + '" on line ' + line + '.');
-  });
-  return (stack.length && stack[stack.length - 1].name === 'traverse');
-};
-
-var traverse = function(node, down, up) {
-  if (down && typeof node.forEach !== 'function') {
-    down(node);
-  }
-  var children = typeof node.forEach === 'function' ? node : (node.children || []);
-  children.forEach(function(child) {
-    traverse(child, down, up);
-  });
-  if (up && typeof node.forEach !== 'function') {
-    up(node);
-  }
-};
+/*===============================
+=            Exports            =
+===============================*/
 
 module.exports = function(swig) {
   swig.setExtension('swigTraverse', {
     stack: [],
     traverse: function(node, down, up) {
-      return traverse(node, down, up);
-    },
+        var self = this;
+        if (down && typeof node.forEach !== 'function') {
+          down(node);
+        }
+        var children = typeof node.forEach === 'function' ? node : (node.children || []);
+        children.forEach(function(child) {
+          self.traverse(child, down, up);
+        });
+        if (up && typeof node.forEach !== 'function') {
+          up(node);
+        }
+      },
     push: function(data) {
       if(typeof data.tree !== 'object'){
-        throw new Error("Second argument of `traverse` tag must be an object, `" + (typeof data.tree) + "` given.");
-      };
+        throw new Error('Second argument of `traverse` tag must be an object, `' + (typeof data.tree) + '` given.');
+      }
       this.stack.unshift(data);
     },
     pop: function() {
